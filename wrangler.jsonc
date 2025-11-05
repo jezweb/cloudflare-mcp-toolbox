@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cloudflare-mcp-toolbox",
+  "main": "src/index.ts",
+  "account_id": "0460574641fdbb98159c98ebf593e2bd",
+  "compatibility_date": "2025-10-11",
+  "observability": {
+    "enabled": true
+  },
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "67af89e28d6843f1ba30e60b10a1108e"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "vars": {
+    "AUTH_TOKEN": "tANOTVssIDuYLzzXpY_vWNol6tMVlXLOTfBsreZUzPM"
+  }
+}

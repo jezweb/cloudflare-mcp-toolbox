@@ -1,0 +1,30 @@
+{
+  "name": "cloudflare-mcp-toolbox",
+  "version": "1.0.0",
+  "description": "MCP server with utility tools for AI agents - date/time, math, text processing, validation, KV, and Workers AI",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "cloudflare",
+    "workers",
+    "ai-tools",
+    "utility-server"
+  ],
+  "author": "Jeremy Dawes <jeremy@jezweb.net>",
+  "license": "MIT",
+  "dependencies": {
+    "hono": "^4.10.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251011.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.43.0"
+  }
+}
