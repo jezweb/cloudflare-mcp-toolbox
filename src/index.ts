@@ -261,47 +261,94 @@ app.get('/', (c) => {
     </div>
 
     <div class="section">
-      <h2>🔧 BetterChat Configuration</h2>
-      <p style="color: #94a3b8; margin-bottom: 1rem;">Add this MCP server to BetterChat:</p>
+      <h2>🔧 MCP Client Configuration</h2>
+
+      <h3 style="color: #c4b5fd; font-size: 1.125rem; margin: 1.5rem 0 0.75rem;">BetterChat</h3>
+      <p style="color: #94a3b8; margin-bottom: 0.5rem;">Add to "My MCP Servers" in settings:</p>
       <pre><code>{
-  "url": "https://your-worker.workers.dev/mcp",
+  "url": "https://cloudflare-mcp-toolbox.webfonts.workers.dev/mcp",
   "headers": {
     "Authorization": "Bearer your-auth-token-here"
   }
 }</code></pre>
+
+      <h3 style="color: #c4b5fd; font-size: 1.125rem; margin: 1.5rem 0 0.75rem;">Claude Desktop</h3>
+      <p style="color: #94a3b8; margin-bottom: 0.5rem;">Add to <code>claude_desktop_config.json</code>:</p>
+      <pre><code>{
+  "mcpServers": {
+    "cloudflare-toolbox": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://cloudflare-mcp-toolbox.webfonts.workers.dev/mcp"],
+      "env": {
+        "MCP_REMOTE_HEADERS": "{\\"Authorization\\":\\"Bearer your-token\\"}"
+      }
+    }
+  }
+}</code></pre>
+
+      <h3 style="color: #c4b5fd; font-size: 1.125rem; margin: 1.5rem 0 0.75rem;">MCP Inspector (Testing)</h3>
+      <p style="color: #94a3b8; margin-bottom: 0.5rem;">Test with MCP Inspector:</p>
+      <pre><code>npx @modelcontextprotocol/inspector \\
+  https://cloudflare-mcp-toolbox.webfonts.workers.dev/mcp \\
+  -H "Authorization: Bearer your-token"</code></pre>
+
       <p style="color: #f59e0b; margin-top: 1rem; padding: 0.75rem; background: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; border-radius: 4px;">
-        <strong>⚠️ Authentication Required</strong><br>
-        Contact the server administrator for the <code>AUTH_TOKEN</code> to access this MCP server.
+        <strong>⚠️ Deploy Your Own</strong><br>
+        This is a public demo. For production use, deploy your own instance with the button below and generate your own <code>AUTH_TOKEN</code>.
       </p>
     </div>
 
     <div class="section">
-      <h2>🛠️ Tool Categories<span class="badge">25 tools</span></h2>
+      <h2>🛠️ Tool Categories<span class="badge">30 tools</span></h2>
       <div class="grid">
         <div class="card">
-          <h3>📅 Date/Time</h3>
-          <p>5 tools for timezone conversion, duration calculations, date formatting</p>
+          <h3>📅 Date/Time (5)</h3>
+          <p>get_current_datetime, convert_timezone, calculate_duration, format_date, parse_date</p>
         </div>
         <div class="card">
-          <h3>🔢 Math</h3>
-          <p>5 tools for calculations, unit conversions, statistics</p>
+          <h3>🔢 Math (6)</h3>
+          <p>calculate, convert_units, statistics, random_number, percentage, roll_dice</p>
         </div>
         <div class="card">
-          <h3>✏️ Text</h3>
-          <p>6 tools for text transformation, encoding, pattern extraction</p>
+          <h3>✏️ Text (6)</h3>
+          <p>transform_text, encode_decode, extract_patterns, hash_text, count_words, truncate_text</p>
         </div>
         <div class="card">
-          <h3>✅ Validation</h3>
-          <p>6 tools for email, URL, JSON validation and sanitization</p>
+          <h3>✅ Validation (6)</h3>
+          <p>validate_email, validate_url, validate_phone, validate_json, sanitize_html, validate_schema</p>
         </div>
         <div class="card">
-          <h3>💾 KV Storage</h3>
-          <p>4 tools for key-value storage operations</p>
+          <h3>💾 KV Storage (4)</h3>
+          <p>kv_get, kv_set, kv_delete, kv_list</p>
         </div>
         <div class="card">
-          <h3>🤖 Workers AI</h3>
-          <p>3 tools for LLM inference, classification, embeddings</p>
+          <h3>🤖 Workers AI (3)</h3>
+          <p>ai_chat, ai_classify, ai_embed</p>
         </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>💡 Example Tool Calls</h2>
+      <div style="margin: 1rem 0;">
+        <h3 style="color: #c4b5fd; font-size: 1rem; margin-bottom: 0.5rem;">Roll Dice</h3>
+        <pre><code>roll_dice({ notation: "2d6+5" })
+→ { rolls: [3, 5], sum: 8, total: 13 }</code></pre>
+      </div>
+      <div style="margin: 1rem 0;">
+        <h3 style="color: #c4b5fd; font-size: 1rem; margin-bottom: 0.5rem;">Parse Natural Language Date</h3>
+        <pre><code>parse_date({ expression: "next Friday at 3pm" })
+→ "2025-11-08T15:00:00+11:00"</code></pre>
+      </div>
+      <div style="margin: 1rem 0;">
+        <h3 style="color: #c4b5fd; font-size: 1rem; margin-bottom: 0.5rem;">Calculate Expression</h3>
+        <pre><code>calculate({ expression: "2 + 2 * 3" })
+→ "8"</code></pre>
+      </div>
+      <div style="margin: 1rem 0;">
+        <h3 style="color: #c4b5fd; font-size: 1rem; margin-bottom: 0.5rem;">AI Sentiment Analysis</h3>
+        <pre><code>ai_classify({ text: "This is amazing!" })
+→ { classification: "POSITIVE", score: 0.9987 }</code></pre>
       </div>
     </div>
 
@@ -318,10 +365,24 @@ app.get('/', (c) => {
     </div>
 
     <div class="section">
-      <h2>📖 Documentation</h2>
+      <h2>🚀 Deploy Your Own</h2>
+      <p style="color: #94a3b8; margin-bottom: 1rem;">Deploy your own instance to Cloudflare Workers (free tier available):</p>
+      <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/jezweb/cloudflare-mcp-toolbox"
+         target="_blank"
+         style="display: inline-block; padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 0.5rem 0;">
+        Deploy to Cloudflare Workers →
+      </a>
+      <p style="color: #94a3b8; margin-top: 1rem; font-size: 0.875rem;">
+        After deployment, generate your own AUTH_TOKEN:<br>
+        <code style="background: rgba(15, 23, 42, 0.6); padding: 0.25rem 0.5rem; border-radius: 4px;">node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"</code>
+      </p>
+    </div>
+
+    <div class="section">
+      <h2>📚 Documentation & Source</h2>
       <ul>
-        <li>View all tool definitions: <code>POST /mcp</code> with <code>method: "tools/list"</code></li>
-        <li>See <code>docs/API_ENDPOINTS.md</code> for complete tool documentation</li>
+        <li><a href="https://github.com/jezweb/cloudflare-mcp-toolbox" target="_blank" style="color: #60a5fa;">GitHub Repository</a> - Full source code and documentation</li>
+        <li><a href="https://github.com/jezweb/cloudflare-mcp-toolbox/blob/main/docs/API_ENDPOINTS.md" target="_blank" style="color: #60a5fa;">API Documentation</a> - Complete tool reference</li>
         <li><a href="https://modelcontextprotocol.io" target="_blank" style="color: #60a5fa;">MCP Protocol Specification</a></li>
       </ul>
     </div>

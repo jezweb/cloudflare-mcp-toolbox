@@ -1,8 +1,12 @@
 # Cloudflare MCP Toolbox
 
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/jezweb/cloudflare-mcp-toolbox)
+
 **Utility tools for AI agents** - date/time, math, text processing, validation, KV storage, and Workers AI integration.
 
 Built on Cloudflare Workers for global edge deployment with zero cold starts.
+
+**Live Demo**: [https://cloudflare-mcp-toolbox.webfonts.workers.dev](https://cloudflare-mcp-toolbox.webfonts.workers.dev)
 
 ---
 
@@ -45,16 +49,31 @@ npm install
 
 ### Configuration
 
-1. **KV Namespace** (already created):
+1. **KV Namespace**:
    ```bash
    wrangler kv namespace create MCP_TOOLBOX_CACHE
    ```
 
-2. **Update wrangler.jsonc** with your KV namespace ID (already done)
+   Update `wrangler.jsonc` with the returned ID:
+   ```jsonc
+   "kv_namespaces": [
+     {
+       "binding": "CACHE",
+       "id": "YOUR_KV_NAMESPACE_ID"
+     }
+   ]
+   ```
 
-3. **Generate AUTH_TOKEN** (already done):
+2. **Generate AUTH_TOKEN**:
    ```bash
    node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+   ```
+
+   Update `wrangler.jsonc`:
+   ```jsonc
+   "vars": {
+     "AUTH_TOKEN": "YOUR_GENERATED_TOKEN_HERE"
+   }
    ```
 
 ### Deploy
@@ -81,11 +100,37 @@ Add to your BetterChat MCP servers config:
 
 ```json
 {
-  "url": "https://cloudflare-mcp-toolbox.YOUR_SUBDOMAIN.workers.dev/mcp",
+  "url": "https://your-worker.workers.dev/mcp",
   "headers": {
-    "Authorization": "Bearer tANOTVssIDuYLzzXpY_vWNol6tMVlXLOTfBsreZUzPM"
+    "Authorization": "Bearer YOUR_AUTH_TOKEN_HERE"
   }
 }
+```
+
+### Claude Desktop
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "cloudflare-toolbox": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://your-worker.workers.dev/mcp"],
+      "env": {
+        "MCP_REMOTE_HEADERS": "{\"Authorization\":\"Bearer YOUR_TOKEN\"}"
+      }
+    }
+  }
+}
+```
+
+### MCP Inspector (Testing)
+
+```bash
+npx @modelcontextprotocol/inspector \
+  https://your-worker.workers.dev/mcp \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 ### MCP Protocol
