@@ -4,6 +4,7 @@
   "main": "src/index.ts",
   "account_id": "0460574641fdbb98159c98ebf593e2bd",
   "compatibility_date": "2025-10-11",
+  "compatibility_flags": ["global_fetch_strictly_public"],
   "observability": {
     "enabled": true
   },
@@ -11,12 +12,17 @@
     {
       "binding": "CACHE",
       "id": "67af89e28d6843f1ba30e60b10a1108e"
+    },
+    {
+      "binding": "OAUTH_KV",
+      "id": "REPLACE_WITH_OAUTH_KV_ID"
     }
   ],
   "ai": {
     "binding": "AI"
   },
   "vars": {
-    "AUTH_TOKEN": "REPLACE_WITH_YOUR_GENERATED_TOKEN"
+    "AUTH_TOKEN": "REPLACE_WITH_YOUR_GENERATED_TOKEN",
+    "COOKIE_ENCRYPTION_KEY": "REPLACE_WITH_32_CHAR_SECRET_KEY"
   }
 }
