@@ -20,6 +20,7 @@
   "author": "Jeremy Dawes <jeremy@jezweb.net>",
   "license": "MIT",
   "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^0.1.0",
     "hono": "^4.10.1"
   },
   "devDependencies": {

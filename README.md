@@ -13,8 +13,8 @@ Built on Cloudflare Workers for global edge deployment with zero cold starts.
 ## 🚀 Features
 
 - **30 Utility Tools** across 6 categories
+- **OAuth 2.1 + Dynamic Client Registration** for Claude.AI integration
 - **Australia/Sydney timezone** as default for all date/time operations
-- **Bearer token authentication** for secure access
 - **Cloudflare Workers AI integration** with automatic embedding caching
 - **Edge deployment** with global low-latency access
 - **MCP Protocol compliant** (Model Context Protocol)
@@ -64,7 +64,31 @@ npm install
    ]
    ```
 
-2. **Generate AUTH_TOKEN**:
+2. **OAuth KV Namespace** (for OAuth tokens and clients):
+   ```bash
+   wrangler kv namespace create MCP_OAUTH_KV
+   ```
+
+   Update `wrangler.jsonc` with the returned ID:
+   ```jsonc
+   "kv_namespaces": [
+     {
+       "binding": "CACHE",
+       "id": "YOUR_CACHE_KV_ID"
+     },
+     {
+       "binding": "OAUTH_KV",
+       "id": "YOUR_OAUTH_KV_ID"
+     }
+   ]
+   ```
+
+3. **Generate AUTH_TOKEN**:
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+   ```
+
+4. **Generate COOKIE_ENCRYPTION_KEY** (for OAuth sessions):
    ```bash
    node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
    ```
@@ -72,7 +96,8 @@ npm install
    Update `wrangler.jsonc`:
    ```jsonc
    "vars": {
-     "AUTH_TOKEN": "YOUR_GENERATED_TOKEN_HERE"
+     "AUTH_TOKEN": "YOUR_GENERATED_TOKEN_HERE",
+     "COOKIE_ENCRYPTION_KEY": "YOUR_32_CHAR_KEY_HERE"
    }
    ```
 
@@ -93,6 +118,35 @@ Server will start at `http://localhost:8787`
 ---
 
 ## 📖 Usage
+
+### Claude.AI (Web Interface) - OAuth 2.1
+
+Claude.AI uses OAuth 2.1 with Dynamic Client Registration. Simply add your MCP server URL in Claude.AI settings:
+
+1. Go to **Settings** → **Custom Connectors** (Pro/Max/Team/Enterprise plans)
+2. Add your MCP Server URL:
+   ```
+   https://your-worker.workers.dev/mcp
+   ```
+3. Claude.AI will automatically:
+   - Discover OAuth endpoints via `/.well-known/oauth-authorization-server`
+   - Register itself as an OAuth client
+   - Redirect you to the authorization page
+4. Enter your `AUTH_TOKEN` to grant access
+5. You're connected!
+
+**OAuth Endpoints (auto-discovered):**
+- `/.well-known/oauth-authorization-server` - Server metadata
+- `/oauth/register` - Dynamic Client Registration
+- `/authorize` - Authorization UI
+- `/oauth/token` - Token exchange
+
+### Custom Domains
+
+OAuth works on any domain - both `*.workers.dev` and custom domains. Just ensure:
+1. Your DNS is correctly pointing to the Cloudflare Worker
+2. SSL is properly configured
+3. The domain is added as a Custom Domain in Cloudflare Workers settings
 
 ### BetterChat Configuration
 
@@ -251,11 +305,13 @@ ai_embed({ text: "Cloudflare Workers are serverless functions" })
 
 ## 🔒 Security
 
-- **Bearer Token Authentication**: All MCP endpoints require valid `Authorization: Bearer TOKEN` header
+- **OAuth 2.1 Authentication**: Full OAuth 2.1 with PKCE support for Claude.AI and other MCP clients
+- **Dynamic Client Registration**: RFC 7591 compliant - clients can self-register
+- **Token Security**: Tokens stored as hashes only, never in plaintext
 - **Input Validation**: All inputs validated before processing
 - **Safe Expression Evaluation**: Math expressions use recursive descent parser (no `eval()` or `Function()`)
 - **HTML Sanitization**: XSS protection via tag stripping or entity escaping
-- **Rate Limiting**: Can be added via KV-based tracking (see Phase 8 docs)
+- **HTTPS Required**: All OAuth endpoints require HTTPS
 
 ---
 
@@ -273,11 +329,15 @@ ai_embed({ text: "Cloudflare Workers are serverless functions" })
 ```
 cloudflare-mcp-toolbox/
 ├── src/
-│   ├── index.ts              # Main Hono app + auth
+│   ├── index.ts              # Main entry + OAuthProvider
 │   ├── mcp/
+│   │   ├── api.ts            # OAuth-protected MCP handler
 │   │   ├── server.ts         # MCP request handler
 │   │   ├── types.ts          # TypeScript types
 │   │   └── tools.ts          # Tool definitions (30 tools)
+│   ├── oauth/
+│   │   ├── handler.ts        # OAuth UI + authorization
+│   │   └── types.ts          # OAuth types
 │   ├── handlers/             # Tool implementations
 │   │   ├── datetime.ts       # Date/time tools (5)
 │   │   ├── math.ts           # Math tools (6)
@@ -309,7 +369,8 @@ cloudflare-mcp-toolbox/
 
 ✅ All 30 tools implemented and tested
 ✅ Deployed to Cloudflare Workers
-✅ Bearer token authentication enabled
+✅ OAuth 2.1 + Dynamic Client Registration enabled
+✅ Claude.AI compatible
 ✅ KV namespace configured
 ✅ Workers AI binding active
 ✅ Production ready
@@ -333,7 +394,7 @@ jeremy@jezweb.net | www.jezweb.com.au
 ## 🙏 Built With
 
 - [Cloudflare Workers](https://workers.cloudflare.com/) - Serverless edge platform
-- [Hono](https://hono.dev/) - Lightweight web framework
+- [Workers OAuth Provider](https://github.com/cloudflare/workers-oauth-provider) - OAuth 2.1 library
 - [Workers AI](https://ai.cloudflare.com/) - LLM inference at the edge
 - [Cloudflare KV](https://developers.cloudflare.com/kv/) - Key-value storage
 - [MCP Protocol](https://modelcontextprotocol.io/) - Model Context Protocol
@@ -344,5 +405,5 @@ jeremy@jezweb.net | www.jezweb.com.au
 **Categories**: 6
 **Global Edge Deployment**: ✅
 **Cold Start Time**: 0ms
-**Authentication**: Bearer Token
+**Authentication**: OAuth 2.1 + DCR
 **Default Timezone**: Australia/Sydney
