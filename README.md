@@ -346,3 +346,8 @@ jeremy@jezweb.net | www.jezweb.com.au
 **Cold Start Time**: 0ms
 **Authentication**: Bearer Token
 **Default Timezone**: Australia/Sydney
+
+## Known Issues
+
+- **Custom domain timeout issue** - Long-lived MCP connections timeout on custom domains but work on `*.workers.dev` URLs. Tracked at: https://github.com/cloudflare/workers-oauth-provider/issues/121
+  - **Workaround**: Use the workers.dev URL instead of custom domain
