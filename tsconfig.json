@@ -16,6 +16,6 @@
     "isolatedModules": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "worker-configuration.d.ts"],
   "exclude": ["node_modules"]
 }

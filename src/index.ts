@@ -1,399 +1,517 @@
 /**
  * Cloudflare MCP Toolbox
- * Utility tools for AI agents - date/time, math, text, validation, KV, AI
+ * OAuth-enabled MCP server with 30 utility tools for AI agents
+ *
+ * Uses Google OAuth for authentication with Claude.ai and other MCP clients
  */
 
-import { Hono } from 'hono'
-import { cors } from 'hono/cors'
-import { bearerAuth } from 'hono/bearer-auth'
-import type { MCPRequest } from './mcp/types'
-import { handleMCPRequest } from './mcp/server'
+import OAuthProvider from '@cloudflare/workers-oauth-provider';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpAgent } from 'agents/mcp';
+import { z } from 'zod';
+import { GoogleHandler } from './oauth/google-handler';
 
-// Type-safe environment bindings
-type Bindings = {
-  CACHE: KVNamespace
-  AI: Ai
-  AUTH_TOKEN: string
+// Import tool handlers
+import {
+  getCurrentDateTime,
+  convertTimezone,
+  calculateDuration,
+  formatDate,
+  parseDate,
+} from './handlers/datetime';
+import {
+  calculate,
+  convertUnits,
+  statistics,
+  randomNumber,
+  percentage,
+  rollDice,
+} from './handlers/math';
+import {
+  transformText,
+  encodeDecode,
+  extractPatterns,
+  hashText,
+  countWords,
+  truncateText,
+} from './handlers/text';
+import {
+  validateEmail,
+  validateUrl,
+  validatePhone,
+  validateJson,
+  sanitizeHtml,
+  validateSchema,
+} from './handlers/validation';
+import { kvGet, kvSet, kvDelete, kvList } from './handlers/kv';
+import { aiChat, aiClassify, aiEmbed } from './handlers/ai';
+
+// Props from OAuth - user info stored in token
+type Props = {
+  id: string;
+  email: string;
+  name: string;
+  picture?: string;
+  accessToken: string;
+};
+
+/**
+ * Cloudflare MCP Toolbox Agent
+ * Durable Object that handles MCP tool calls with OAuth context
+ */
+export class ToolboxMCP extends McpAgent<Env, Record<string, never>, Props> {
+  server = new McpServer({
+    name: 'cloudflare-mcp-toolbox',
+    version: '1.0.0',
+  });
+
+  async init() {
+    // ============================================
+    // Date/Time Tools (5)
+    // ============================================
+
+    this.server.tool(
+      'get_current_datetime',
+      'Get current date and time in specified timezone (defaults to Australia/Sydney)',
+      {
+        timezone: z.string().optional().describe('IANA timezone (e.g., "America/New_York", "Europe/London"). Default: "Australia/Sydney"'),
+        format: z.enum(['iso', 'unix', 'readable']).optional().describe('Output format: "iso" (ISO 8601), "unix" (timestamp), "readable" (human-friendly). Default: "iso"'),
+      },
+      async (args) => {
+        const result = getCurrentDateTime(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'convert_timezone',
+      'Convert datetime from one timezone to another',
+      {
+        datetime: z.string().describe('Input datetime (ISO 8601 string or unix timestamp)'),
+        from_timezone: z.string().describe('Source timezone (IANA format)'),
+        to_timezone: z.string().describe('Target timezone (IANA format)'),
+        format: z.enum(['iso', 'unix', 'readable']).optional().describe('Output format. Default: "iso"'),
+      },
+      async (args) => {
+        const result = convertTimezone(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'calculate_duration',
+      'Calculate time difference between two dates',
+      {
+        start: z.string().describe('Start datetime (ISO 8601 or unix timestamp)'),
+        end: z.string().describe('End datetime (ISO 8601 or unix timestamp)'),
+        unit: z.enum(['seconds', 'minutes', 'hours', 'days']).optional().describe('Unit for result. Default: "seconds"'),
+      },
+      async (args) => {
+        const result = calculateDuration(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'format_date',
+      'Format date in various styles',
+      {
+        datetime: z.string().describe('Input datetime (ISO 8601 or unix timestamp)'),
+        format: z.enum(['iso', 'relative', 'short', 'long', 'time_only', 'date_only']).describe('Format style'),
+        timezone: z.string().optional().describe('Timezone for output. Default: "Australia/Sydney"'),
+      },
+      async (args) => {
+        const result = formatDate(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'parse_date',
+      'Parse natural language date expressions like "tomorrow", "in 3 days", "next Friday"',
+      {
+        expression: z.string().describe('Natural language expression (e.g., "tomorrow", "in 3 hours", "next Monday", "2 days ago")'),
+        timezone: z.string().optional().describe('Reference timezone. Default: "Australia/Sydney"'),
+        format: z.enum(['iso', 'unix', 'readable']).optional().describe('Output format. Default: "iso"'),
+      },
+      async (args) => {
+        const result = parseDate(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    // ============================================
+    // Math Tools (6)
+    // ============================================
+
+    this.server.tool(
+      'calculate',
+      'Safely evaluate mathematical expressions. Supports +, -, *, /, ^, sqrt, pow, abs, sin, cos, tan, log, exp',
+      {
+        expression: z.string().describe('Mathematical expression (e.g., "2 + 2 * 3", "sqrt(16)", "2^3")'),
+      },
+      async (args) => {
+        const result = calculate(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'convert_units',
+      'Convert between units of measurement (length, weight, volume, time, temperature)',
+      {
+        value: z.number().describe('Numeric value to convert'),
+        from_unit: z.string().describe('Source unit (e.g., "km", "lbs", "celsius", "liters")'),
+        to_unit: z.string().describe('Target unit (e.g., "miles", "kg", "fahrenheit", "gallons")'),
+      },
+      async (args) => {
+        const result = convertUnits(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'statistics',
+      'Calculate statistical measures on an array of numbers',
+      {
+        numbers: z.array(z.number()).describe('Array of numbers to analyze'),
+        metrics: z.array(z.enum(['mean', 'median', 'mode', 'stddev', 'variance', 'min', 'max', 'sum', 'count'])).optional().describe('Metrics to calculate (default: all)'),
+      },
+      async (args) => {
+        const result = statistics(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'random_number',
+      'Generate cryptographically secure random number in specified range',
+      {
+        min: z.number().optional().describe('Minimum value (default: 0)'),
+        max: z.number().optional().describe('Maximum value (default: 1)'),
+        integer: z.boolean().optional().describe('Return integer instead of float (default: false)'),
+      },
+      async (args) => {
+        const result = randomNumber(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'percentage',
+      'Calculate percentages and percentage changes',
+      {
+        operation: z.enum(['of', 'change', 'is_what_percent']).describe('"of" (X% of Y), "change" (% change from X to Y), "is_what_percent" (X is what % of Y)'),
+        value1: z.number().describe('First value'),
+        value2: z.number().describe('Second value'),
+      },
+      async (args) => {
+        const result = percentage(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'roll_dice',
+      'Roll dice using standard notation (e.g., "2d6", "1d20+5", "3d8-2")',
+      {
+        notation: z.string().describe('Dice notation (e.g., "2d6" for two six-sided dice, "1d20+5" for one d20 with +5 modifier)'),
+      },
+      async (args) => {
+        const result = rollDice(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    // ============================================
+    // Text Tools (6)
+    // ============================================
+
+    this.server.tool(
+      'transform_text',
+      'Transform text in various ways (uppercase, lowercase, titlecase, slug, trim, reverse)',
+      {
+        text: z.string().describe('Text to transform'),
+        operation: z.enum(['uppercase', 'lowercase', 'titlecase', 'slug', 'trim', 'reverse']).describe('Transformation to apply'),
+      },
+      async (args) => {
+        const result = transformText(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'encode_decode',
+      'Encode or decode text using various formats (base64, URL, HTML)',
+      {
+        text: z.string().describe('Text to encode or decode'),
+        operation: z.enum(['base64_encode', 'base64_decode', 'url_encode', 'url_decode', 'html_escape', 'html_unescape']).describe('Encoding/decoding operation to perform'),
+      },
+      async (args) => {
+        const result = encodeDecode(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'extract_patterns',
+      'Extract patterns from text using predefined or custom regex (emails, URLs, phone numbers, hashtags, mentions)',
+      {
+        text: z.string().describe('Text to search'),
+        pattern: z.enum(['emails', 'urls', 'phone_numbers', 'hashtags', 'mentions', 'custom']).describe('Pattern type to extract'),
+        custom_regex: z.string().optional().describe('Custom regex pattern (required when pattern is "custom")'),
+      },
+      async (args) => {
+        const result = extractPatterns(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'hash_text',
+      'Hash text using SHA-256, SHA-1, or MD5 (uses SHA-256 for MD5 fallback)',
+      {
+        text: z.string().describe('Text to hash'),
+        algorithm: z.enum(['sha256', 'sha1', 'md5']).describe('Hash algorithm to use'),
+        output_format: z.enum(['hex', 'base64']).optional().describe('Output format (default: "hex")'),
+      },
+      async (args) => {
+        const result = await hashText(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'count_words',
+      'Count words, characters, sentences, and paragraphs in text',
+      {
+        text: z.string().describe('Text to analyze'),
+        metrics: z.array(z.enum(['words', 'characters', 'sentences', 'paragraphs'])).optional().describe('Metrics to calculate (default: all)'),
+      },
+      async (args) => {
+        const result = countWords(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'truncate_text',
+      'Truncate text to specified length with optional ellipsis and word boundary preservation',
+      {
+        text: z.string().describe('Text to truncate'),
+        max_length: z.number().describe('Maximum length of output'),
+        ellipsis: z.boolean().optional().describe('Add ellipsis (...) at end (default: true)'),
+        break_words: z.boolean().optional().describe('Allow breaking in middle of words (default: false)'),
+      },
+      async (args) => {
+        const result = truncateText(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    // ============================================
+    // Validation Tools (6)
+    // ============================================
+
+    this.server.tool(
+      'validate_email',
+      'Validate email address format',
+      {
+        email: z.string().describe('Email address to validate'),
+      },
+      async (args) => {
+        const result = validateEmail(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'validate_url',
+      'Validate URL format and parse components (protocol, domain, path, query)',
+      {
+        url: z.string().describe('URL to validate'),
+        require_protocol: z.boolean().optional().describe('Require http/https protocol (default: true)'),
+      },
+      async (args) => {
+        const result = validateUrl(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'validate_phone',
+      'Validate phone number format and format for display',
+      {
+        phone: z.string().describe('Phone number to validate'),
+        country_code: z.string().optional().describe('Optional country code (e.g., "US", "AU")'),
+      },
+      async (args) => {
+        const result = validatePhone(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'validate_json',
+      'Validate JSON string and parse it',
+      {
+        json_string: z.string().describe('JSON string to validate'),
+      },
+      async (args) => {
+        const result = validateJson(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'sanitize_html',
+      'Sanitize HTML by stripping tags or escaping entities',
+      {
+        html: z.string().describe('HTML content to sanitize'),
+        mode: z.enum(['strip', 'escape']).describe('"strip" removes all tags, "escape" converts to HTML entities'),
+      },
+      async (args) => {
+        const result = sanitizeHtml(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'validate_schema',
+      'Validate data against a simple JSON schema',
+      {
+        data: z.any().describe('Data to validate'),
+        schema: z.object({
+          type: z.string().describe('Expected data type'),
+          required: z.array(z.string()).optional().describe('Required fields (for objects)'),
+          properties: z.record(z.string(), z.any()).optional().describe('Property definitions (for objects)'),
+        }).describe('Schema definition with type, required, and properties'),
+      },
+      async (args) => {
+        const result = validateSchema(args);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    // ============================================
+    // KV Storage Tools (4)
+    // ============================================
+
+    this.server.tool(
+      'kv_get',
+      'Get value from Cloudflare KV storage',
+      {
+        key: z.string().describe('KV key to retrieve'),
+        type: z.enum(['text', 'json']).optional().describe('Value type (default: "text")'),
+      },
+      async (args) => {
+        const result = await kvGet(args, this.env.CACHE);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'kv_set',
+      'Set value in Cloudflare KV storage with optional TTL',
+      {
+        key: z.string().describe('KV key to set'),
+        value: z.any().describe('Value to store (string or JSON-serializable object)'),
+        ttl: z.number().optional().describe('Time-to-live in seconds (optional)'),
+      },
+      async (args) => {
+        const result = await kvSet(args, this.env.CACHE);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'kv_delete',
+      'Delete key from Cloudflare KV storage',
+      {
+        key: z.string().describe('KV key to delete'),
+      },
+      async (args) => {
+        const result = await kvDelete(args, this.env.CACHE);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'kv_list',
+      'List keys in Cloudflare KV storage with optional prefix filter',
+      {
+        prefix: z.string().optional().describe('Key prefix filter (optional)'),
+        limit: z.number().optional().describe('Maximum keys to return (default: 100)'),
+      },
+      async (args) => {
+        const result = await kvList(args, this.env.CACHE);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    // ============================================
+    // Workers AI Tools (3)
+    // ============================================
+
+    this.server.tool(
+      'ai_chat',
+      'Generate text using Cloudflare Workers AI LLM (chat completion)',
+      {
+        prompt: z.string().describe('User prompt for the LLM'),
+        system_message: z.string().optional().describe('Optional system message to guide behavior'),
+        max_tokens: z.number().optional().describe('Maximum tokens to generate (default: 256)'),
+        model: z.string().optional().describe('Model to use (default: "@cf/meta/llama-3.1-8b-instruct")'),
+      },
+      async (args) => {
+        const result = await aiChat(args, this.env.AI);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'ai_classify',
+      'Classify text or perform sentiment analysis using Cloudflare Workers AI',
+      {
+        text: z.string().describe('Text to classify'),
+        model: z.string().optional().describe('Model to use (default: "@cf/huggingface/distilbert-sst-2-int8")'),
+      },
+      async (args) => {
+        const result = await aiClassify(args, this.env.AI);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    this.server.tool(
+      'ai_embed',
+      'Generate text embeddings using Cloudflare Workers AI (cached for efficiency)',
+      {
+        text: z.string().describe('Text to embed'),
+        model: z.string().optional().describe('Model to use (default: "@cf/baai/bge-base-en-v1.5")'),
+      },
+      async (args) => {
+        const result = await aiEmbed(args, this.env.AI, this.env.CACHE);
+        return { content: [{ type: 'text', text: result }] };
+      }
+    );
+
+    // Log authenticated user
+    if (this.props) {
+      console.log(`MCP session initialized for user: ${this.props.email}`);
+    }
+  }
 }
 
-const app = new Hono<{ Bindings: Bindings }>()
-
-// Enable CORS for MCP clients
-app.use('*', cors({
-  origin: '*',
-  allowMethods: ['GET', 'POST', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization'],
-}))
-
 /**
- * Authentication middleware for MCP endpoints
- * Validates Bearer token from Authorization header
+ * OAuth Provider - Main export
+ * Handles OAuth flow and routes MCP requests to ToolboxMCP
  */
-app.use('/mcp/*', async (c, next) => {
-  const auth = bearerAuth({
-    token: c.env.AUTH_TOKEN,
-    realm: 'Cloudflare MCP Toolbox',
-    hashFunction: (token: string) => token, // Direct comparison
-  })
-  return auth(c, next)
-})
-
-/**
- * MCP Endpoint (HTTP Streamable)
- * POST /mcp
- */
-app.post('/mcp', async (c) => {
-  try {
-    const body = await c.req.json<MCPRequest>()
-
-    // Validate JSON-RPC format
-    if (!body || body.jsonrpc !== '2.0') {
-      return c.json({
-        jsonrpc: '2.0',
-        id: body?.id,
-        error: {
-          code: -32600,
-          message: 'Invalid Request: missing or invalid jsonrpc field',
-        },
-      }, 400)
-    }
-
-    // Handle MCP request
-    const response = await handleMCPRequest(body, {
-      CACHE: c.env.CACHE,
-      AI: c.env.AI,
-    })
-
-    return c.json(response)
-  } catch (error) {
-    console.error('Error handling MCP request:', error)
-    return c.json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32700,
-        message: 'Parse error',
-      },
-    }, 400)
-  }
-})
-
-/**
- * Root endpoint - Discovery page with setup instructions
- */
-app.get('/', (c) => {
-  return c.html(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cloudflare MCP Toolbox</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      line-height: 1.6;
-      color: #e4e4e7;
-      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-      min-height: 100vh;
-      padding: 2rem;
-    }
-    .container {
-      max-width: 900px;
-      margin: 0 auto;
-      background: rgba(30, 41, 59, 0.6);
-      backdrop-filter: blur(10px);
-      border-radius: 16px;
-      padding: 3rem;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-      border: 1px solid rgba(148, 163, 184, 0.1);
-    }
-    h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      margin-bottom: 0.5rem;
-      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .subtitle {
-      color: #94a3b8;
-      font-size: 1.125rem;
-      margin-bottom: 2rem;
-    }
-    .section {
-      margin: 2rem 0;
-    }
-    h2 {
-      font-size: 1.5rem;
-      color: #f1f5f9;
-      margin-bottom: 1rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .badge {
-      display: inline-block;
-      padding: 0.25rem 0.75rem;
-      background: rgba(59, 130, 246, 0.2);
-      color: #60a5fa;
-      border-radius: 9999px;
-      font-size: 0.875rem;
-      font-weight: 600;
-      margin-left: 0.5rem;
-    }
-    code {
-      background: rgba(15, 23, 42, 0.6);
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
-      font-family: 'Monaco', 'Courier New', monospace;
-      font-size: 0.875rem;
-      color: #7dd3fc;
-    }
-    pre {
-      background: rgba(15, 23, 42, 0.8);
-      padding: 1rem;
-      border-radius: 8px;
-      overflow-x: auto;
-      border: 1px solid rgba(148, 163, 184, 0.1);
-      margin: 1rem 0;
-    }
-    pre code {
-      background: none;
-      padding: 0;
-      color: #e4e4e7;
-    }
-    .endpoint {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 1rem;
-      background: rgba(15, 23, 42, 0.4);
-      border-radius: 8px;
-      margin: 0.5rem 0;
-      border-left: 3px solid #3b82f6;
-    }
-    .method {
-      background: #3b82f6;
-      color: white;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
-      font-weight: 600;
-      font-size: 0.75rem;
-    }
-    ul {
-      list-style: none;
-      margin-left: 0;
-    }
-    li {
-      padding: 0.5rem 0;
-      padding-left: 1.5rem;
-      position: relative;
-    }
-    li:before {
-      content: "→";
-      position: absolute;
-      left: 0;
-      color: #3b82f6;
-    }
-    .status {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 1rem;
-      background: rgba(34, 197, 94, 0.1);
-      border: 1px solid rgba(34, 197, 94, 0.3);
-      border-radius: 8px;
-      color: #4ade80;
-      font-weight: 600;
-      margin-top: 1rem;
-    }
-    .status:before {
-      content: "✓";
-      background: #22c55e;
-      color: white;
-      width: 1.25rem;
-      height: 1.25rem;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.875rem;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1rem;
-      margin: 1rem 0;
-    }
-    .card {
-      background: rgba(15, 23, 42, 0.4);
-      padding: 1rem;
-      border-radius: 8px;
-      border-left: 3px solid #8b5cf6;
-    }
-    .card h3 {
-      color: #c4b5fd;
-      font-size: 1rem;
-      margin-bottom: 0.5rem;
-    }
-    .card p {
-      color: #94a3b8;
-      font-size: 0.875rem;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Cloudflare MCP Toolbox</h1>
-    <p class="subtitle">Utility tools for AI agents - date/time, math, text processing, validation, KV storage, and Workers AI</p>
-
-    <div class="status">Server Online</div>
-
-    <div class="section">
-      <h2>📡 MCP Endpoint</h2>
-      <div class="endpoint">
-        <span class="method">POST</span>
-        <code>/mcp</code>
-        <span style="color: #94a3b8;">HTTP Streamable (JSON-RPC 2.0)</span>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>🔧 MCP Client Configuration</h2>
-
-      <h3 style="color: #c4b5fd; font-size: 1.125rem; margin: 1.5rem 0 0.75rem;">BetterChat</h3>
-      <p style="color: #94a3b8; margin-bottom: 0.5rem;">Add to "My MCP Servers" in settings:</p>
-      <pre><code>{
-  "url": "https://cloudflare-mcp-toolbox.webfonts.workers.dev/mcp",
-  "headers": {
-    "Authorization": "Bearer your-auth-token-here"
-  }
-}</code></pre>
-
-      <h3 style="color: #c4b5fd; font-size: 1.125rem; margin: 1.5rem 0 0.75rem;">Claude Desktop</h3>
-      <p style="color: #94a3b8; margin-bottom: 0.5rem;">Add to <code>claude_desktop_config.json</code>:</p>
-      <pre><code>{
-  "mcpServers": {
-    "cloudflare-toolbox": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://cloudflare-mcp-toolbox.webfonts.workers.dev/mcp"],
-      "env": {
-        "MCP_REMOTE_HEADERS": "{\\"Authorization\\":\\"Bearer your-token\\"}"
-      }
-    }
-  }
-}</code></pre>
-
-      <h3 style="color: #c4b5fd; font-size: 1.125rem; margin: 1.5rem 0 0.75rem;">MCP Inspector (Testing)</h3>
-      <p style="color: #94a3b8; margin-bottom: 0.5rem;">Test with MCP Inspector:</p>
-      <pre><code>npx @modelcontextprotocol/inspector \\
-  https://cloudflare-mcp-toolbox.webfonts.workers.dev/mcp \\
-  -H "Authorization: Bearer your-token"</code></pre>
-
-      <p style="color: #f59e0b; margin-top: 1rem; padding: 0.75rem; background: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; border-radius: 4px;">
-        <strong>⚠️ Deploy Your Own</strong><br>
-        This is a public demo. For production use, deploy your own instance with the button below and generate your own <code>AUTH_TOKEN</code>.
-      </p>
-    </div>
-
-    <div class="section">
-      <h2>🛠️ Tool Categories<span class="badge">30 tools</span></h2>
-      <div class="grid">
-        <div class="card">
-          <h3>📅 Date/Time (5)</h3>
-          <p>get_current_datetime, convert_timezone, calculate_duration, format_date, parse_date</p>
-        </div>
-        <div class="card">
-          <h3>🔢 Math (6)</h3>
-          <p>calculate, convert_units, statistics, random_number, percentage, roll_dice</p>
-        </div>
-        <div class="card">
-          <h3>✏️ Text (6)</h3>
-          <p>transform_text, encode_decode, extract_patterns, hash_text, count_words, truncate_text</p>
-        </div>
-        <div class="card">
-          <h3>✅ Validation (6)</h3>
-          <p>validate_email, validate_url, validate_phone, validate_json, sanitize_html, validate_schema</p>
-        </div>
-        <div class="card">
-          <h3>💾 KV Storage (4)</h3>
-          <p>kv_get, kv_set, kv_delete, kv_list</p>
-        </div>
-        <div class="card">
-          <h3>🤖 Workers AI (3)</h3>
-          <p>ai_chat, ai_classify, ai_embed</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>💡 Example Tool Calls</h2>
-      <div style="margin: 1rem 0;">
-        <h3 style="color: #c4b5fd; font-size: 1rem; margin-bottom: 0.5rem;">Roll Dice</h3>
-        <pre><code>roll_dice({ notation: "2d6+5" })
-→ { rolls: [3, 5], sum: 8, total: 13 }</code></pre>
-      </div>
-      <div style="margin: 1rem 0;">
-        <h3 style="color: #c4b5fd; font-size: 1rem; margin-bottom: 0.5rem;">Parse Natural Language Date</h3>
-        <pre><code>parse_date({ expression: "next Friday at 3pm" })
-→ "2025-11-08T15:00:00+11:00"</code></pre>
-      </div>
-      <div style="margin: 1rem 0;">
-        <h3 style="color: #c4b5fd; font-size: 1rem; margin-bottom: 0.5rem;">Calculate Expression</h3>
-        <pre><code>calculate({ expression: "2 + 2 * 3" })
-→ "8"</code></pre>
-      </div>
-      <div style="margin: 1rem 0;">
-        <h3 style="color: #c4b5fd; font-size: 1rem; margin-bottom: 0.5rem;">AI Sentiment Analysis</h3>
-        <pre><code>ai_classify({ text: "This is amazing!" })
-→ { classification: "POSITIVE", score: 0.9987 }</code></pre>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>📚 Key Features</h2>
-      <ul>
-        <li><strong>Australia/Sydney timezone</strong> - Default timezone for all date/time operations</li>
-        <li><strong>Cryptographically secure</strong> - Random numbers, hashing with Web Crypto API</li>
-        <li><strong>Safe expression evaluation</strong> - Math calculations without code injection</li>
-        <li><strong>Workers AI integration</strong> - Llama 3.1 for chat, DistilBERT for sentiment, BGE for embeddings</li>
-        <li><strong>KV storage</strong> - Persistent key-value storage with TTL support</li>
-        <li><strong>Embedded caching</strong> - AI embeddings automatically cached to reduce quota usage</li>
-      </ul>
-    </div>
-
-    <div class="section">
-      <h2>🚀 Deploy Your Own</h2>
-      <p style="color: #94a3b8; margin-bottom: 1rem;">Deploy your own instance to Cloudflare Workers (free tier available):</p>
-      <a href="https://deploy.workers.cloudflare.com/?url=https://github.com/jezweb/cloudflare-mcp-toolbox"
-         target="_blank"
-         style="display: inline-block; padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin: 0.5rem 0;">
-        Deploy to Cloudflare Workers →
-      </a>
-      <p style="color: #94a3b8; margin-top: 1rem; font-size: 0.875rem;">
-        After deployment, generate your own AUTH_TOKEN:<br>
-        <code style="background: rgba(15, 23, 42, 0.6); padding: 0.25rem 0.5rem; border-radius: 4px;">node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"</code>
-      </p>
-    </div>
-
-    <div class="section">
-      <h2>📚 Documentation & Source</h2>
-      <ul>
-        <li><a href="https://github.com/jezweb/cloudflare-mcp-toolbox" target="_blank" style="color: #60a5fa;">GitHub Repository</a> - Full source code and documentation</li>
-        <li><a href="https://github.com/jezweb/cloudflare-mcp-toolbox/blob/main/docs/API_ENDPOINTS.md" target="_blank" style="color: #60a5fa;">API Documentation</a> - Complete tool reference</li>
-        <li><a href="https://modelcontextprotocol.io" target="_blank" style="color: #60a5fa;">MCP Protocol Specification</a></li>
-      </ul>
-    </div>
-  </div>
-</body>
-</html>
-  `)
-})
-
-/**
- * Export the Hono app directly (ES Module format)
- * This is the correct pattern for Cloudflare Workers with Hono
- */
-export default app
+export default new OAuthProvider({
+  apiHandlers: {
+    '/sse': ToolboxMCP.serveSSE('/sse'),   // SSE protocol (legacy support)
+    '/mcp': ToolboxMCP.serve('/mcp'),       // Streamable HTTP protocol
+  },
+  authorizeEndpoint: '/authorize',
+  clientRegistrationEndpoint: '/register',
+  defaultHandler: GoogleHandler as any,
+  tokenEndpoint: '/token',
+});
