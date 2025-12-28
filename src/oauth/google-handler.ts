@@ -163,7 +163,7 @@ app.get('/callback', async (c) => {
   }
 
   // Exchange code for access token
-  const [accessToken, errResponse] = await fetchUpstreamAuthToken({
+  const [tokens, errResponse] = await fetchUpstreamAuthToken({
     client_id: c.env.GOOGLE_CLIENT_ID,
     client_secret: c.env.GOOGLE_CLIENT_SECRET,
     code: c.req.query('code'),
@@ -174,12 +174,19 @@ app.get('/callback', async (c) => {
   if (errResponse) return errResponse;
 
   // Fetch user info from Google
-  const user = await fetchGoogleUserInfo(accessToken);
+  const user = await fetchGoogleUserInfo(tokens.accessToken);
   if (!user) {
     return c.text('Failed to fetch user info', 500);
   }
 
   const { id, email, name, picture } = user;
+
+  // Log refresh token status for debugging
+  if (tokens.refreshToken) {
+    console.log(`OAuth: Refresh token obtained for ${email}`);
+  } else {
+    console.log(`OAuth: No refresh token received for ${email}`);
+  }
 
   // Complete authorization and return token to MCP client
   const { redirectTo } = await c.env.OAUTH_PROVIDER.completeAuthorization({
@@ -187,7 +194,9 @@ app.get('/callback', async (c) => {
       label: name || email,
     },
     props: {
-      accessToken,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      tokenExpiresAt: tokens.expiresAt,
       email,
       id,
       name,

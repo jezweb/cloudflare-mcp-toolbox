@@ -10,6 +10,8 @@ export type Props = {
   name: string;
   picture?: string;
   accessToken: string;
+  refreshToken?: string;
+  tokenExpiresAt?: number;
 };
 
 /**
@@ -40,7 +42,18 @@ export function getUpstreamAuthorizeUrl({
 }
 
 /**
- * Fetches an authorization token from Google
+ * Token response from Google OAuth
+ */
+export interface GoogleTokenResponse {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+}
+
+/**
+ * Fetches authorization tokens from Google
+ *
+ * @returns Tuple of [tokens, null] on success or [null, Response] on error
  */
 export async function fetchUpstreamAuthToken({
   client_id,
@@ -54,7 +67,7 @@ export async function fetchUpstreamAuthToken({
   client_secret: string;
   redirect_uri: string;
   client_id: string;
-}): Promise<[string, null] | [null, Response]> {
+}): Promise<[GoogleTokenResponse, null] | [null, Response]> {
   if (!code) {
     return [null, new Response('Missing code', { status: 400 })];
   }
@@ -79,7 +92,12 @@ export async function fetchUpstreamAuthToken({
     return [null, new Response('Failed to fetch access token', { status: 500 })];
   }
 
-  const body = await resp.json() as { access_token?: string; error?: string };
+  const body = (await resp.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    error?: string;
+  };
 
   if (body.error) {
     console.error('Google OAuth error:', body.error);
@@ -91,7 +109,57 @@ export async function fetchUpstreamAuthToken({
     return [null, new Response('Missing access token', { status: 400 })];
   }
 
-  return [accessToken, null];
+  const expiresIn = body.expires_in || 3600;
+  const expiresAt = Date.now() + (expiresIn * 1000);
+
+  return [{
+    accessToken,
+    refreshToken: body.refresh_token,
+    expiresAt,
+  }, null];
+}
+
+/**
+ * Refreshes an access token using a refresh token
+ */
+export async function refreshAccessToken({
+  client_id,
+  client_secret,
+  refresh_token,
+}: {
+  client_id: string;
+  client_secret: string;
+  refresh_token: string;
+}): Promise<GoogleTokenResponse | null> {
+  const resp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id,
+      client_secret,
+      refresh_token,
+      grant_type: 'refresh_token',
+    }).toString(),
+  });
+
+  if (!resp.ok) {
+    console.error('Token refresh failed:', await resp.text());
+    return null;
+  }
+
+  const body = (await resp.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  };
+
+  if (!body.access_token) return null;
+
+  return {
+    accessToken: body.access_token,
+    refreshToken: body.refresh_token || refresh_token,
+    expiresAt: Date.now() + ((body.expires_in || 3600) * 1000),
+  };
 }
 
 /**
