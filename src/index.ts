@@ -10,6 +10,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpAgent } from 'agents/mcp';
 import { z } from 'zod';
 import { GoogleHandler } from './oauth/google-handler';
+import { adminApp, validateToken } from './admin';
 
 // Import tool handlers
 import {
@@ -501,17 +502,104 @@ export class ToolboxMCP extends McpAgent<Env, Record<string, never>, Props> {
   }
 }
 
+// MCP handlers for both SSE and Streamable HTTP transports
+const sseHandler = ToolboxMCP.serveSSE('/sse');
+const mcpHandler = ToolboxMCP.serve('/mcp');
+
 /**
- * OAuth Provider - Main export
+ * OAuth Provider
  * Handles OAuth flow and routes MCP requests to ToolboxMCP
  */
-export default new OAuthProvider({
+const oauthProvider = new OAuthProvider({
   apiHandlers: {
-    '/sse': ToolboxMCP.serveSSE('/sse'),   // SSE protocol (legacy support)
-    '/mcp': ToolboxMCP.serve('/mcp'),       // Streamable HTTP protocol
+    '/sse': sseHandler,
+    '/mcp': mcpHandler,
   },
   authorizeEndpoint: '/authorize',
   clientRegistrationEndpoint: '/register',
   defaultHandler: GoogleHandler as any,
   tokenEndpoint: '/token',
 });
+
+/**
+ * Handle MCP authentication via Bearer token
+ * Checks both legacy AUTH_TOKEN and KV-stored tokens
+ */
+async function handleMcpAuth(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  url: URL
+): Promise<Response | null> {
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) return null;
+
+  const token = authHeader.slice(7);
+
+  // 1. Check legacy AUTH_TOKEN env var
+  if (env.AUTH_TOKEN && token === env.AUTH_TOKEN) {
+    const headerAuthCtx = {
+      ...ctx,
+      props: {
+        id: 'header-auth',
+        email: 'header-auth@system',
+        name: 'Header Auth User',
+        accessToken: '',
+      },
+    };
+
+    if (url.pathname === '/sse') {
+      return sseHandler.fetch(request, env, headerAuthCtx);
+    } else {
+      return mcpHandler.fetch(request, env, headerAuthCtx);
+    }
+  }
+
+  // 2. Check KV tokens
+  const tokenLookup = await validateToken(env.OAUTH_KV, token);
+  if (tokenLookup) {
+    const headerAuthCtx = {
+      ...ctx,
+      props: {
+        id: tokenLookup.id,
+        email: `token:${tokenLookup.label}`,
+        name: tokenLookup.label,
+        accessToken: '',
+      },
+    };
+
+    if (url.pathname === '/sse') {
+      return sseHandler.fetch(request, env, headerAuthCtx);
+    } else {
+      return mcpHandler.fetch(request, env, headerAuthCtx);
+    }
+  }
+
+  // Invalid token
+  return new Response('Unauthorized: Invalid token', { status: 401 });
+}
+
+/**
+ * Main export - wraps OAuth provider with header auth and admin support
+ */
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+
+    // Route admin pages
+    if (url.pathname === '/admin' || url.pathname === '/admin/logout' ||
+        url.pathname === '/admin/login' || url.pathname === '/admin/callback' ||
+        url.pathname.startsWith('/api/admin') || url.pathname.startsWith('/api/auth')) {
+      return adminApp.fetch(request, env, ctx);
+    }
+
+    // Check for Bearer token auth on MCP endpoints
+    if (url.pathname === '/sse' || url.pathname === '/mcp') {
+      const authResponse = await handleMcpAuth(request, env, ctx, url);
+      if (authResponse) return authResponse;
+    }
+
+    // Fall through to OAuth provider for all other requests
+    return oauthProvider.fetch(request, env, ctx);
+  },
+};

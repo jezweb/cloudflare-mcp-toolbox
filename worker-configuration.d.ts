@@ -20,5 +20,8 @@ interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   COOKIE_ENCRYPTION_KEY: string;
-  AUTH_TOKEN: string;
+  AUTH_TOKEN?: string;
+
+  // Admin access control (comma-separated emails)
+  ADMIN_EMAILS?: string;
 }
